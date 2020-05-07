@@ -35,12 +35,12 @@ it("should call the right command handler", async () => {
 
 it("should throw if the command is unrecognized", async () => {
   const res = handleCommand("edit", testEmailAuthenticated);
-  expect(res).rejects.toEqual(new Error(`"edit" is not a command`));
+  await expect(res).rejects.toEqual(new Error(`"edit" is not a command`));
 });
 
 it("should throw if the command is not authenticated", async () => {
   const res = handleCommand("somecommand", testEmailUnauthenticated);
-  expect(res).rejects.toEqual(
+  await expect(res).rejects.toEqual(
     new Error(
       "Command email's sender is inconsistent with environment variable EMAIL."
     )

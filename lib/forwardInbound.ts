@@ -1,10 +1,20 @@
 import { ParsedMail } from "mailparser";
 import Mail from "nodemailer/lib/mailer";
-import { domain, email as personalEmail } from "./env";
-import getAliasDescription from "./getAliasDescription";
-import repackageReceivedAttachments from "./utils/repackageReceivedAttachments";
-import sendEmail from "./utils/sendEmail";
-import senderAddressEncodeDecode from "./utils/senderAddressEncodeDecode";
+import { email as personalEmail, operationalDomain } from "./env";
+import Alias from "./models/Alias";
+import repackageReceivedAttachments from "./repackageReceivedAttachments";
+import sendEmail from "./sendEmail";
+import senderAddressEncodeDecode from "./senderAddressEncodeDecode";
+
+export const representNameAndEmailAddress = (
+  name: string,
+  emailAddress: string
+): string => {
+  if (name === "") {
+    return emailAddress;
+  }
+  return `${name} [${emailAddress}]`;
+};
 
 /**
  * Generates forwarded email's "from" header information
@@ -13,7 +23,7 @@ import senderAddressEncodeDecode from "./utils/senderAddressEncodeDecode";
  * Prioritizes original email's "reply-to" header over "from" header.
  */
 export const generateFromHeader = (
-  alias: string,
+  aliasValue: string,
   parsedMail: ParsedMail
 ): Mail.Address => {
   let replyToEmailAddress = "";
@@ -30,29 +40,29 @@ export const generateFromHeader = (
   }
 
   return {
-    name: `${replyToName} <${replyToEmailAddress}>`,
+    name: representNameAndEmailAddress(replyToName, replyToEmailAddress),
     address: senderAddressEncodeDecode.encodeEmailAddress(
-      alias,
+      aliasValue,
       replyToEmailAddress
     )
   };
 };
 
 export const generateInboundMailOptions = async (
-  alias: string,
+  alias: Alias,
   parsedMail: ParsedMail
 ): Promise<Mail.Options> => {
   const mailOptions: Mail.Options = {
-    from: generateFromHeader(alias, parsedMail),
+    from: generateFromHeader(alias.value, parsedMail),
     to: parsedMail.to.value,
     cc: parsedMail.cc?.value,
-    subject: `[${await getAliasDescription(alias)}] ${parsedMail.subject}`,
+    subject: parsedMail.subject || "",
     html:
       parsedMail.html !== false
         ? (parsedMail.html as string) // Will never be `true`
         : parsedMail.textAsHtml,
     envelope: {
-      from: `${alias}@${domain}`, // For semantics only; this has no significance
+      from: `${alias.value}@${operationalDomain}`, // For semantics only; this has no significance
       to: personalEmail
     },
     attachments: repackageReceivedAttachments(parsedMail.attachments)
@@ -65,11 +75,20 @@ export const generateInboundMailOptions = async (
  * Forwards received email to personal email.
  * Preserves metadata while avoiding re-sending to other recipients.
  */
-export default async (alias: string, parsedMail: ParsedMail): Promise<void> => {
+export default async (
+  aliasValue: string,
+  parsedMail: ParsedMail
+): Promise<void> => {
   console.log("Attempting to forward received email to personal email");
 
+  const alias = await Alias.getAlias(aliasValue);
+  if (alias === undefined) {
+    console.log("Skipping forwarding received email, as alias does not exist");
+    return;
+  }
   const mailOptions = await generateInboundMailOptions(alias, parsedMail);
   await sendEmail(mailOptions);
+  await alias.didReceiveEmail();
 
   console.log("Successfully forwarded email to personal email");
 };

@@ -1,12 +1,12 @@
 import path from "path";
 import * as AWSMock from "aws-sdk-mock";
 import remove from "../../../lib/commands/remove";
-import sendEmail from "../../../lib/utils/sendEmail";
-import { domain, email } from "../../../lib/env";
+import sendEmail from "../../../lib/sendEmail";
+import { email, operationalDomain } from "../../../lib/env";
 import { Commands } from "../../../lib/commandSet";
 import generateTestEmail from "../../utils/generateTestEmail";
 
-jest.mock("../../../lib/utils/sendEmail");
+jest.mock("../../../lib/sendEmail");
 
 type Callback = (err: any, data: any) => void;
 
@@ -31,10 +31,13 @@ it("should delete the provided alias", async () => {
     }
   );
 
-  const testEmail = await generateTestEmail({
-    to: [{ email: "test@domain.com" }],
-    subject: "abandonedalias"
-  });
+  const testEmail = await generateTestEmail(
+    {
+      to: [{ email: "test@domain.com" }],
+      subject: "abandonedalias"
+    },
+    "messageId"
+  );
 
   await remove(testEmail);
 
@@ -45,9 +48,14 @@ it("should delete the provided alias", async () => {
 
   expect(sendEmail).toHaveBeenCalledTimes(1);
   expect(sendEmail).toHaveBeenCalledWith({
-    from: `${Commands.Remove}@${domain}`,
+    from: {
+      name: "Remove",
+      address: `${Commands.Remove}@${operationalDomain}`
+    },
     to: [email],
-    subject: "Delete alias abandonedalias",
+    inReplyTo: "messageId",
+    references: ["messageId"],
+    subject: "abandonedalias",
     text: "Deletion completed."
   });
 });
